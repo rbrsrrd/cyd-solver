@@ -10,7 +10,8 @@ import requests
 
 app = Flask(__name__)
 
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+# استخدام مفتاح Groq
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", os.environ.get("GEMINI_API_KEY", ""))
 DISPLAY_LANG = os.environ.get("DISPLAY_LANG", "en")
 
 # ---------------------------------------------------------------- الحالة العامة
@@ -38,7 +39,7 @@ PROMPT = f"""You are an expert exam tutor. The image contains a question, usuall
 Steps:
 1. Read the question and all options exactly as written.
 2. Solve it carefully and decide on the single correct answer.
-3. Reply with ONLY a JSON object, no markdown, in this exact shape:
+3. Reply with ONLY a valid JSON object, no markdown, no extra text, in this exact shape:
 {{"question": "...", "options": ["...", "..."], "correct": "...", "correct_index": 0}}
 
 Rules:
@@ -108,8 +109,8 @@ def health():
 
 @app.post("/upload")
 def upload():
-    if not GEMINI_API_KEY:
-        return jsonify({"status": "error", "message": "GEMINI_API_KEY is not set"}), 500
+    if not GROQ_API_KEY:
+        return jsonify({"status": "error", "message": "GROQ_API_KEY is not set"}), 500
 
     body = request.get_json(silent=True) or {}
     img = body.get("image", "")
@@ -123,36 +124,43 @@ def upload():
         if m:
             mime = m.group(1)
 
-    # الرابط المباشر الذي طلبته لنموذج gemini-1.5-flash
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    # رابط Groq لنموذج الرؤية القوي والسريع Llama 3.2 90b Vision
+    url = "https://api.groq.com/openai/v1/chat/completions"
     
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
     payload = {
-        "contents": [{
-            "parts": [
-                {"text": PROMPT},
-                {
-                    "inline_data": {
-                        "mime_type": mime,
-                        "data": img
+        "model": "meta-llama/llama-3.2-90b-vision-preview",
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": PROMPT},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{mime};base64,{img}"
+                        }
                     }
-                }
-            ]
-        }],
-        "generationConfig": {
-            "response_mime_type": "application/json",
-            "temperature": 0.1
-        }
+                ]
+            }
+        ],
+        "response_format": {"type": "json_object"},
+        "temperature": 0.1
     }
 
     try:
-        response = requests.post(url, json=payload, timeout=35)
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
         res_json = response.json()
 
         if "error" in res_json:
-            err_msg = res_json["error"].get("message", "API Error")
+            err_msg = res_json["error"].get("message", "Groq API Error")
             return jsonify(set_state(status="error", message=err_msg[:150])), 400
 
-        text_output = res_json["candidates"][0]["content"]["parts"][0]["text"]
+        text_output = res_json["choices"][0]["message"]["content"]
         data = parse_model_json(text_output)
 
         if data.get("error"):
