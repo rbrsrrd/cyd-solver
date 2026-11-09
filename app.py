@@ -11,7 +11,7 @@ import google.generativeai as genai
 app = Flask(__name__)
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-MODEL_NAME = os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")
+MODEL_NAME = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
 # "en"  : يُرجع الإجابة بالإنجليزية وبأحرف ASCII (مناسب لشاشة CYD)
 # "original": يُبقي لغة السؤال الأصلية
 DISPLAY_LANG = os.environ.get("DISPLAY_LANG", "en")
