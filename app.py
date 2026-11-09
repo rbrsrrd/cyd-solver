@@ -10,7 +10,6 @@ import requests
 
 app = Flask(__name__)
 
-# استخدام مفتاح Groq
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", os.environ.get("GEMINI_API_KEY", ""))
 DISPLAY_LANG = os.environ.get("DISPLAY_LANG", "en")
 
@@ -124,7 +123,6 @@ def upload():
         if m:
             mime = m.group(1)
 
-    # رابط Groq لنموذج الرؤية القوي والسريع Llama 3.2 90b Vision
     url = "https://api.groq.com/openai/v1/chat/completions"
     
     headers = {
@@ -133,7 +131,7 @@ def upload():
     }
 
     payload = {
-        "model": "meta-llama/llama-3.2-90b-vision-preview",
+        "model": "llama-3.2-11b-vision-preview",
         "messages": [
             {
                 "role": "user",
