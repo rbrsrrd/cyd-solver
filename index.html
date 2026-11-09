@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>حلّال الأسئلة</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: #0f172a; color: #e2e8f0; font-family: system-ui, "Segoe UI", Tahoma, sans-serif;
+         display: flex; flex-direction: column; height: 100dvh; }
+  video { flex: 1; min-height: 0; width: 100%; object-fit: cover; background: #000; }
+  .panel { padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 10px; }
+  button { font-size: 18px; font-weight: 700; padding: 14px; border: 0; border-radius: 12px;
+           background: #22c55e; color: #052e16; cursor: pointer; }
+  button:disabled { opacity: .5; }
+  #status { text-align: center; font-size: 14px; min-height: 1.3em; color: #94a3b8; }
+  #status.err { color: #f87171; }
+  #out { display: none; background: #1e293b; border-radius: 10px; padding: 10px 12px; font-size: 14px;
+         max-height: 28dvh; overflow: auto; direction: ltr; text-align: left; }
+  #out .ans { color: #4ade80; font-weight: 700; margin-top: 6px; }
+</style>
+</head>
+<body>
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="canvas" hidden></canvas>
+  <div class="panel">
+    <div id="out"></div>
+    <div id="status">جارٍ فتح الكاميرا...</div>
+    <button id="btn" disabled>التقاط وإرسال</button>
+  </div>
+
+<script>
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const btn = document.getElementById('btn');
+const statusEl = document.getElementById('status');
+const out = document.getElementById('out');
+
+function setStatus(msg, isErr = false) {
+  statusEl.textContent = msg;
+  statusEl.className = isErr ? 'err' : '';
+}
+
+async function startCamera() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+    btn.disabled = false;
+    setStatus('وجّه الكاميرا نحو السؤال ثم اضغط الزر');
+  } catch (e) {
+    setStatus('تعذّر فتح الكاميرا: ' + e.message + ' (تأكد من السماح بالوصول واستخدام HTTPS)', true);
+  }
+}
+
+async function captureAndSend() {
+  if (!video.videoWidth) return;
+  const MAX = 1280;
+  const scale = Math.min(1, MAX / Math.max(video.videoWidth, video.videoHeight));
+  canvas.width = Math.round(video.videoWidth * scale);
+  canvas.height = Math.round(video.videoHeight * scale);
+  canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+
+  btn.disabled = true;
+  out.style.display = 'none';
+  setStatus('جارٍ التحليل... قد يستغرق بضع ثوانٍ');
+  try {
+    const r = await fetch('/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: dataUrl })
+    });
+    const d = await r.json();
+    if (d.status === 'success') {
+      out.innerHTML = '';
+      const q = document.createElement('div'); q.textContent = d.question;
+      out.appendChild(q);
+      (d.options || []).forEach((o, i) => {
+        const el = document.createElement('div');
+        el.textContent = String.fromCharCode(65 + i) + ') ' + o;
+        out.appendChild(el);
+      });
+      const a = document.createElement('div'); a.className = 'ans';
+      a.textContent = 'Answer: ' + d.correct;
+      out.appendChild(a);
+      out.style.display = 'block';
+      setStatus('تم الإرسال إلى الشاشة ✔');
+    } else {
+      setStatus('خطأ: ' + (d.message || 'غير معروف'), true);
+    }
+  } catch (e) {
+    setStatus('فشل الاتصال بالسيرفر: ' + e.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+btn.addEventListener('click', captureAndSend);
+startCamera();
+</script>
+</body>
+</html>
