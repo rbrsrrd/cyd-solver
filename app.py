@@ -5,7 +5,7 @@ import base64
 import threading
 from datetime import datetime, timezone
 
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template_string
 import google.generativeai as genai
 
 app = Flask(__name__)
@@ -113,7 +113,8 @@ def set_state(**kw):
 # ---------------------------------------------------------------- المسارات
 @app.get("/")
 def index():
-    return render_template("index.html")
+    with open("index.html", "r", encoding="utf-8") as f:
+        return render_template_string(f.read())
 
 
 @app.get("/health")
