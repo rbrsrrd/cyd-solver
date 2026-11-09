@@ -11,7 +11,6 @@ import requests
 app = Flask(__name__)
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-MODEL_NAME = "gemini-1.5-flash"# الأسرع والأكثر استقراراً في الاستجابة السريعة
 DISPLAY_LANG = os.environ.get("DISPLAY_LANG", "en")
 
 # ---------------------------------------------------------------- الحالة العامة
@@ -124,7 +123,8 @@ def upload():
         if m:
             mime = m.group(1)
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent?key={GEMINI_API_KEY}"
+    # الرابط المباشر الذي طلبته لنموذج gemini-1.5-flash
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     
     payload = {
         "contents": [{
@@ -145,7 +145,6 @@ def upload():
     }
 
     try:
-        # رفع مهلة الانتظار إلى 35 ثانية لضمان عدم حدوث TimeOut نهائياً
         response = requests.post(url, json=payload, timeout=35)
         res_json = response.json()
 
