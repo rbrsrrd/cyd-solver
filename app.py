@@ -11,8 +11,7 @@ import requests
 app = Flask(__name__)
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-# استخدام النموذج المطلوب رسمياً لتجنب أي أخطاء رفض
-MODEL_NAME = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
+MODEL_NAME = os.environ.get("GEMINI_MODEL", "gemini-1.5-flash") # الأسرع والأكثر استقراراً في الاستجابة السريعة
 DISPLAY_LANG = os.environ.get("DISPLAY_LANG", "en")
 
 # ---------------------------------------------------------------- الحالة العامة
@@ -97,7 +96,6 @@ def set_state(**kw):
         return dict(STATE)
 
 
-# ---------------------------------------------------------------- المسارات
 @app.get("/")
 def index():
     with open("index.html", "r", encoding="utf-8") as f:
@@ -142,12 +140,13 @@ def upload():
         }],
         "generationConfig": {
             "response_mime_type": "application/json",
-            "temperature": 0.2
+            "temperature": 0.1
         }
     }
 
     try:
-        response = requests.post(url, json=payload, timeout=25)
+        # رفع مهلة الانتظار إلى 35 ثانية لضمان عدم حدوث TimeOut نهائياً
+        response = requests.post(url, json=payload, timeout=35)
         res_json = response.json()
 
         if "error" in res_json:
