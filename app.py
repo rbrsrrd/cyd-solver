@@ -10,9 +10,10 @@ import requests
 
 app = Flask(__name__)
 
-# سنستخدم مفتاح Groq أو Gemini، وبما أنك تريد نموذجاً شغالاً 100%، سنستخدم Groq Llama 3.2 90b Vision (أو استبدله بمفتاحك)
-# أو سنعدلها بحيث تستخدم واجهة Groq السريعة للصور
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", os.environ.get("GEMINI_API_KEY", ""))
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+# استخدام النموذج المطلوب رسمياً لتجنب أي أخطاء رفض
+MODEL_NAME = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
+DISPLAY_LANG = os.environ.get("DISPLAY_LANG", "en")
 
 # ---------------------------------------------------------------- الحالة العامة
 _lock = threading.Lock()
@@ -27,18 +28,28 @@ STATE = {
     "updated_at": None,
 }
 
-PROMPT = """You are an expert exam tutor. The image contains a question, usually multiple choice.
+LANG_RULE = (
+    "Write the question, options and correct answer in English (translate if the "
+    "original is in another language) and use plain ASCII characters only "
+    "(write math like x^2, sqrt(x), pi, <=, >=)."
+    if DISPLAY_LANG == "en"
+    else "Keep the original language of the question and options."
+)
+
+PROMPT = f"""You are an expert exam tutor. The image contains a question, usually multiple choice.
 Steps:
 1. Read the question and all options exactly as written.
 2. Solve it carefully and decide on the single correct answer.
-3. Reply with ONLY a valid JSON object, no markdown, no extra text, in this exact shape:
-{"question": "...", "options": ["...", "..."], "correct": "...", "correct_index": 0}
+3. Reply with ONLY a JSON object, no markdown, in this exact shape:
+{{"question": "...", "options": ["...", "..."], "correct": "...", "correct_index": 0}}
 
 Rules:
 - "options" contains only the option texts, WITHOUT letter or number labels (no "A)", "1.").
-- "correct" is the full text of the correct option.
-- "correct_index" is the 0-based index of the correct option in "options", or -1 if no options.
-- If no readable question, reply {"error": "no_question"}.
+- "correct" is the full text of the correct option (or a short final answer if there are no options).
+- "correct_index" is the 0-based index of the correct option in "options", or -1 if there are no options.
+- If the question has no options, return "options": [] and put the answer in "correct".
+- {LANG_RULE}
+- If the image has no readable question, reply {{"error": "no_question"}}.
 """
 
 
@@ -48,6 +59,11 @@ def resolve_index(options, correct, idx):
     c = (correct or "").strip().lower()
     for i, o in enumerate(options):
         if o.strip().lower() == c:
+            return i
+    m = re.match(r"^\(?([a-hA-H])[\)\.\:]?$", (correct or "").strip())
+    if m:
+        i = ord(m.group(1).upper()) - 65
+        if i < len(options):
             return i
     return -1
 
@@ -66,19 +82,22 @@ def parse_model_json(text):
 def set_state(**kw):
     with _lock:
         STATE["id"] += 1
-        STATE.update({
-            "status": "waiting",
-            "question": "",
-            "options": [],
-            "correct": "",
-            "correct_index": -1,
-            "message": "",
-        })
+        STATE.update(
+            {
+                "status": "waiting",
+                "question": "",
+                "options": [],
+                "correct": "",
+                "correct_index": -1,
+                "message": "",
+            }
+        )
         STATE.update(kw)
         STATE["updated_at"] = datetime.now(timezone.utc).isoformat()
         return dict(STATE)
 
 
+# ---------------------------------------------------------------- المسارات
 @app.get("/")
 def index():
     with open("index.html", "r", encoding="utf-8") as f:
@@ -92,6 +111,9 @@ def health():
 
 @app.post("/upload")
 def upload():
+    if not GEMINI_API_KEY:
+        return jsonify({"status": "error", "message": "GEMINI_API_KEY is not set"}), 500
+
     body = request.get_json(silent=True) or {}
     img = body.get("image", "")
     if not img:
@@ -104,13 +126,7 @@ def upload():
         if m:
             mime = m.group(1)
 
-    # استخدام Groq API (أو أي نموذج آخر تفضله)
-    # إذا أردت استمرار استخدام Gemini لكن بطريقة HTTP مباشرة بدون مكتبة لتجنب مشاكل النماذج:
-    api_key = os.environ.get("GEMINI_API_KEY", "")
-    if not api_key:
-        return jsonify({"status": "error", "message": "API_KEY is not set"}), 500
-
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent?key={GEMINI_API_KEY}"
     
     payload = {
         "contents": [{
@@ -131,18 +147,20 @@ def upload():
     }
 
     try:
-        response = requests.post(url, json=payload, timeout=20)
+        response = requests.post(url, json=payload, timeout=25)
         res_json = response.json()
-        
+
         if "error" in res_json:
-            err_msg = res_json["error"].get("message", "Unknown error")
+            err_msg = res_json["error"].get("message", "API Error")
             return jsonify(set_state(status="error", message=err_msg[:150])), 400
 
         text_output = res_json["candidates"][0]["content"]["parts"][0]["text"]
         data = parse_model_json(text_output)
 
         if data.get("error"):
-            return jsonify(set_state(status="error", message="No readable question in the image")), 422
+            return jsonify(
+                set_state(status="error", message="No readable question in the image")
+            ), 422
 
         options = [str(o).strip() for o in (data.get("options") or [])]
         correct = str(data.get("correct", "")).strip()
