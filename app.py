@@ -11,7 +11,7 @@ import requests
 app = Flask(__name__)
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-MODEL_NAME = os.environ.get("GEMINI_MODEL", "gemini-1.5-flash") # الأسرع والأكثر استقراراً في الاستجابة السريعة
+MODEL_NAME = "gemini-1.5-flash"# الأسرع والأكثر استقراراً في الاستجابة السريعة
 DISPLAY_LANG = os.environ.get("DISPLAY_LANG", "en")
 
 # ---------------------------------------------------------------- الحالة العامة
